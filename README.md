@@ -4,7 +4,12 @@ A full-stack, private-by-default workspace for due-diligence documents. Owners c
 
 ## Status and hosted URLs
 
-The application is ready to deploy. Public URLs are intentionally not listed yet because this repository has not been connected to the owner’s Vercel and API-hosting accounts. Follow the deployment notes below after connecting those accounts; do not substitute placeholder URLs in a take-home submission.
+| Service | URL |
+| --- | --- |
+| Frontend (Vercel) | https://acme-data-room-web-eosin.vercel.app |
+| API (Render) | https://acme-data-room-api.onrender.com |
+
+The deployed frontend returns the authentication screen, and the API responds with its production JSON error format. CORS is configured to allow the deployed Vercel origin.
 
 ## What is included
 
