@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ShareResourceType {
+  DATA_ROOM
+  FOLDER
+  FILE
+}
+
+enum ShareType {
+  PUBLIC
+  USER
+}
+
+enum ShareRole {
+  VIEWER
+  EDITOR
+}
+
+model User {
+  id             String     @id @db.Uuid
+  email          String     @unique
+  displayName    String?
+  ownedDataRooms DataRoom[] @relation("DataRoomOwner")
+  receivedShares Share[]    @relation("ShareGrantee")
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@map("users")
+}
+
+model DataRoom {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  ownerId   String   @db.Uuid
+  owner     User     @relation("DataRoomOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  folders   Folder[]
+  files     File[]
+  shares    Share[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId, updatedAt])
+  @@map("data_rooms")
+}
+
+model Folder {
+  id             String    @id @default(uuid()) @db.Uuid
+  dataRoomId     String    @db.Uuid
+  parentId       String?   @db.Uuid
+  parentScope    String
+  name           String
+  normalizedName String
+  dataRoom       DataRoom  @relation(fields: [dataRoomId], references: [id], onDelete: Cascade)
+  parent         Folder?   @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children       Folder[]  @relation("FolderHierarchy")
+  files          File[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([dataRoomId, parentScope, normalizedName])
+  @@index([dataRoomId, parentId, name])
+  @@map("folders")
+}
+
+model File {
+  id             String    @id @default(uuid()) @db.Uuid
+  dataRoomId     String    @db.Uuid
+  folderId       String?   @db.Uuid
+  folderScope    String
+  name           String
+  normalizedName String
+  storageKey     String    @unique
+  mimeType       String
+  sizeBytes      BigInt
+  dataRoom       DataRoom  @relation(fields: [dataRoomId], references: [id], onDelete: Cascade)
+  folder         Folder?   @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([dataRoomId, folderScope, normalizedName])
+  @@index([dataRoomId, folderId, createdAt, id])
+  @@index([folderId, normalizedName])
+  @@map("files")
+}
+
+model Share {
+  id            String            @id @default(uuid()) @db.Uuid
+  dataRoomId    String            @db.Uuid
+  resourceType  ShareResourceType
+  resourceId    String            @db.Uuid
+  shareType     ShareType
+  granteeUserId String?           @db.Uuid
+  tokenHash     String?           @unique
+  role          ShareRole         @default(VIEWER)
+  revokedAt     DateTime?
+  dataRoom      DataRoom          @relation(fields: [dataRoomId], references: [id], onDelete: Cascade)
+  granteeUser   User?             @relation("ShareGrantee", fields: [granteeUserId], references: [id], onDelete: Cascade)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([granteeUserId, revokedAt])
+  @@index([dataRoomId, resourceType, resourceId, revokedAt])
+  @@map("shares")
+}

@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #172033;
+  background: #f6f7fb;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background: #f6f7fb;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+button, input, select { font: inherit; }
+
+button:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 3px solid rgba(79, 70, 229, 0.24);
+  outline-offset: 2px;
+}
+
+@layer components {
+  .button {
+    @apply inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm font-semibold transition focus:outline-none disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .button-primary { @apply button bg-brand text-white hover:bg-indigo-700; }
+  .button-secondary { @apply button border border-slate-200 bg-white text-slate-700 hover:bg-slate-50; }
+  .button-danger { @apply button bg-rose-600 text-white hover:bg-rose-700; }
+  .input { @apply h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-ink placeholder:text-slate-400; }
+  .label { @apply mb-1.5 block text-sm font-medium text-slate-700; }
+}

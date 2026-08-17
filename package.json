@@ -1,0 +1,14 @@
+{
+  "name": "acme-data-room",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "api:build": "npm run build --workspace=@acme/data-room-api",
+    "api:start": "npm run start --workspace=@acme/data-room-api",
+    "api:prisma:generate": "npm run prisma:generate --workspace=@acme/data-room-api",
+    "web:build": "npm run build --workspace=@acme/data-room-web",
+    "web:start": "npm run start --workspace=@acme/data-room-web"
+  }
+}
