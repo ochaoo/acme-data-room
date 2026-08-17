@@ -7,6 +7,12 @@ interface FolderIdRow {
   id: string;
 }
 
+interface FolderStatsRow {
+  folderId: string;
+  fileCount: number;
+  sizeBytes: string;
+}
+
 @Injectable()
 export class FoldersRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -46,6 +52,34 @@ export class FoldersRepository {
     `);
 
     return rows.map((row) => row.id);
+  }
+
+  async findSubtreeStats(folderIds: string[]): Promise<Map<string, { fileCount: number; sizeBytes: number }>> {
+    if (!folderIds.length) {
+      return new Map();
+    }
+
+    const typedFolderIds = Prisma.join(folderIds.map((folderId) => Prisma.sql`${folderId}::uuid`));
+    const rows = await this.prisma.$queryRaw<FolderStatsRow[]>(Prisma.sql`
+      WITH RECURSIVE folder_tree AS (
+        SELECT id AS root_id, id AS folder_id
+        FROM folders
+        WHERE id IN (${typedFolderIds})
+        UNION ALL
+        SELECT tree.root_id, child.id
+        FROM folder_tree tree
+        INNER JOIN folders child ON child."parentId" = tree.folder_id
+      )
+      SELECT
+        tree.root_id::text AS "folderId",
+        COUNT(files.id)::int AS "fileCount",
+        COALESCE(SUM(files."sizeBytes"), 0)::text AS "sizeBytes"
+      FROM folder_tree tree
+      LEFT JOIN files ON files."folderId" = tree.folder_id
+      GROUP BY tree.root_id
+    `);
+
+    return new Map(rows.map((row) => [row.folderId, { fileCount: Number(row.fileCount), sizeBytes: Number(row.sizeBytes) }]));
   }
 
   async listChildren(

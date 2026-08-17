@@ -17,9 +17,10 @@ The deployed frontend returns the authentication screen, and the API responds wi
 - Private Data Rooms, visible only to their owner unless shared.
 - Nested folders, breadcrumbs, rename, and recursive delete confirmation.
 - Multi-file PDF upload through direct signed uploads to a private Supabase Storage bucket, with per-file progress and a 50 MB limit.
-- In-app PDF preview, rename with automatic conflict resolution, move, and delete.
+- In-app PDF preview, rename, move, delete, and version history. Re-uploading the same filename into the same folder creates a new version instead of a duplicate.
 - Read-only public links and permissioned shares for registered users; the owner can revoke either.
 - A dedicated public, view-only route for link recipients.
+- Room-wide file-name search and recursive folder-size display.
 - Live Supabase-backed e2e coverage for core security and data-integrity flows.
 
 ## Stack
@@ -58,6 +59,7 @@ erDiagram
   FOLDER ||--o{ FOLDER : parent_of
   DATA_ROOM ||--o{ FILE : contains
   FOLDER ||--o{ FILE : contains
+  FILE ||--o{ FILE_VERSION : keeps
   DATA_ROOM ||--o{ SHARE : scopes
 
   USER {
@@ -84,6 +86,13 @@ erDiagram
     bigint sizeBytes
     string normalizedName
   }
+  FILE_VERSION {
+    uuid id PK
+    uuid fileId FK
+    int versionNumber
+    string storageKey UK
+    bigint sizeBytes
+  }
   SHARE {
     uuid id PK
     uuid dataRoomId FK
@@ -97,7 +106,7 @@ erDiagram
   }
 ```
 
-`Share.resourceType` plus `Share.resourceId` is a deliberate polymorphic scope: a share can point at a room, a folder, or a file without separate share tables. `role` already supports `VIEWER` and `EDITOR`, while this MVP exposes `VIEWER` only. Folder and file names are unique per parent scope, including the root, using a normalized name and a root sentinel.
+`Share.resourceType` plus `Share.resourceId` is a deliberate polymorphic scope: a share can point at a room, a folder, or a file without separate share tables. `role` already supports `VIEWER` and `EDITOR`, while this MVP exposes `VIEWER` only. Folder and logical file names are unique per parent scope, including the root, using a normalized name and a root sentinel. A same-name upload becomes the next `FileVersion` for that logical file; older Storage objects remain available through version history.
 
 ## Local setup
 
@@ -193,7 +202,6 @@ The API already limits folders and files independently and returns cursors; the 
 - Invite an email address that is not registered yet, with a secure acceptance flow. Today, permissioned sharing intentionally works only for registered users, so the recipient identity is explicit and access remains revocable.
 - Add expiry dates, password protection, audit events, and download policy controls for external links.
 - Wire the existing `EDITOR` role into the authorization checks and UI.
-- Add room-scoped name search/filtering and optional file versions on conflict.
 - Add resumable uploads, virus scanning, richer file types, and background preview generation.
 - Add UI tests and a deploy-time health check.
 

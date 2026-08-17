@@ -13,6 +13,8 @@ export type Folder = {
   name: string;
   createdAt: string;
   updatedAt: string;
+  fileCount: number;
+  sizeBytes: number;
 };
 
 export type DataRoomFile = {
@@ -24,6 +26,22 @@ export type DataRoomFile = {
   sizeBytes: number;
   createdAt: string;
   updatedAt: string;
+  versionCount: number;
+  folder?: { id: string; name: string } | null;
+};
+
+export type FileVersion = {
+  id: string;
+  fileId: string;
+  versionNumber: number;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+};
+
+export type FileSearchResults = {
+  files: DataRoomFile[];
+  nextCursor: string | null;
 };
 
 export type Breadcrumb = {

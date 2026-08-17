@@ -7,7 +7,13 @@ import { AuthenticatedUser } from '../../auth/interfaces';
 import { SharingRepository } from '../../sharing/repositories';
 import { AccessControlService } from '../../sharing/services';
 import { StorageService } from '../../storage/services';
-import { CompleteUploadDto, CreateUploadIntentDto, MoveFileDto, RenameFileDto } from '../dto';
+import {
+  CompleteUploadDto,
+  CreateUploadIntentDto,
+  MoveFileDto,
+  RenameFileDto,
+  SearchFilesQueryDto,
+} from '../dto';
 import { FilesRepository } from '../repositories';
 import { FileNamingService } from './file-naming.service';
 
@@ -44,19 +50,30 @@ export class FilesService {
     }
 
     const folderScope = folder?.id ?? ROOT_SCOPE;
-    const name = await this.fileNamingService.resolveAvailableName(dto.dataRoomId, folderScope, dto.fileName);
+    const normalizedName = this.fileNamingService.normalizeName(dto.fileName);
+    const existingFile = await this.filesRepository.findNameInLocation(
+      dto.dataRoomId,
+      folderScope,
+      normalizedName,
+    );
 
     try {
-      const file = await this.filesRepository.create({
-        dataRoomId: dto.dataRoomId,
-        folderId: folder?.id ?? null,
-        folderScope,
-        name,
-        normalizedName: this.fileNamingService.normalizeName(name),
-        storageKey: dto.storageKey,
-        mimeType: dto.mimeType,
-        sizeBytes: BigInt(dto.sizeBytes),
-      });
+      const file = existingFile
+        ? await this.filesRepository.appendVersion(existingFile, {
+            storageKey: dto.storageKey,
+            mimeType: dto.mimeType,
+            sizeBytes: BigInt(dto.sizeBytes),
+          })
+        : await this.filesRepository.createWithInitialVersion({
+            dataRoomId: dto.dataRoomId,
+            folderId: folder?.id ?? null,
+            folderScope,
+            name: dto.fileName.trim(),
+            normalizedName,
+            storageKey: dto.storageKey,
+            mimeType: dto.mimeType,
+            sizeBytes: BigInt(dto.sizeBytes),
+          });
       return this.fileResponse(file);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -76,6 +93,41 @@ export class FilesService {
     const file = await this.getFile(fileId);
     await this.accessControlService.assertCanViewFile(user.id, file);
     return { signedUrl: await this.storageService.createSignedDownloadUrl(file.storageKey) };
+  }
+
+  async getVersions(user: AuthenticatedUser, fileId: string) {
+    const file = await this.getFile(fileId);
+    await this.accessControlService.assertCanViewFile(user.id, file);
+    const versions = await this.filesRepository.findVersions(file.id);
+    return versions.map((version) => ({ ...version, sizeBytes: Number(version.sizeBytes) }));
+  }
+
+  async getVersionDownloadUrl(user: AuthenticatedUser, fileId: string, versionId: string) {
+    const file = await this.getFile(fileId);
+    await this.accessControlService.assertCanViewFile(user.id, file);
+    const version = await this.filesRepository.findVersionById(file.id, versionId);
+    if (!version) {
+      throw new ApiException(HttpStatus.NOT_FOUND, ERROR_CODE.FILE_NOT_FOUND);
+    }
+    return { signedUrl: await this.storageService.createSignedDownloadUrl(version.storageKey) };
+  }
+
+  async search(user: AuthenticatedUser, dataRoomId: string, query: SearchFilesQueryDto) {
+    const dataRoom = await this.sharingRepository.findDataRoomById(dataRoomId);
+    if (!dataRoom) {
+      throw new ApiException(HttpStatus.NOT_FOUND, ERROR_CODE.DATA_ROOM_NOT_FOUND);
+    }
+    await this.accessControlService.assertCanViewDataRoom(user.id, dataRoom);
+    const page = await this.filesRepository.searchByName(
+      dataRoomId,
+      query.query.trim(),
+      query.cursor,
+      query.limit,
+    );
+    return {
+      files: page.items.map((file) => this.fileResponse(file)),
+      nextCursor: page.nextCursor,
+    };
   }
 
   async rename(user: AuthenticatedUser, fileId: string, dto: RenameFileDto) {
@@ -121,7 +173,8 @@ export class FilesService {
   async delete(user: AuthenticatedUser, fileId: string) {
     const file = await this.getFile(fileId);
     await this.accessControlService.assertOwner(user.id, file.dataRoomId);
-    await this.storageService.removeFiles([file.storageKey]);
+    const versions = await this.filesRepository.findVersions(file.id);
+    await this.storageService.removeFiles([...new Set([file.storageKey, ...versions.map((version) => version.storageKey)])]);
     await this.sharingRepository.deleteForFile(file.id);
     await this.filesRepository.delete(file.id);
   }
@@ -145,7 +198,7 @@ export class FilesService {
     return folder;
   }
 
-  private async getFile(fileId: string): Promise<File> {
+  private async getFile(fileId: string): Promise<File & { _count?: { versions: number } }> {
     const file = await this.filesRepository.findById(fileId);
     if (!file) {
       throw new ApiException(HttpStatus.NOT_FOUND, ERROR_CODE.FILE_NOT_FOUND);
@@ -157,7 +210,14 @@ export class FilesService {
     return new RegExp(`^rooms/${dataRoomId}/files/[0-9a-f-]{36}\\.pdf$`, 'i').test(storageKey);
   }
 
-  private fileResponse(file: File) {
-    return { ...file, sizeBytes: Number(file.sizeBytes) };
+  private fileResponse(
+    file: File & { _count?: { versions: number }; folder?: { id: string; name: string } | null },
+  ) {
+    const { _count, ...response } = file;
+    return {
+      ...response,
+      sizeBytes: Number(file.sizeBytes),
+      versionCount: _count?.versions ?? 1,
+    };
   }
 }

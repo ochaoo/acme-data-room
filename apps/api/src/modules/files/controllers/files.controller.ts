@@ -1,9 +1,9 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 
 import { CurrentUser } from '../../auth/decorators';
 import { SupabaseAuthGuard } from '../../auth/guards';
 import { AuthenticatedUser } from '../../auth/interfaces';
-import { CompleteUploadDto, CreateUploadIntentDto, MoveFileDto, RenameFileDto } from '../dto';
+import { CompleteUploadDto, CreateUploadIntentDto, MoveFileDto, RenameFileDto, SearchFilesQueryDto } from '../dto';
 import { FilesService } from '../services';
 
 @Controller()
@@ -23,9 +23,35 @@ export class FilesController {
   }
 
   @UseGuards(SupabaseAuthGuard)
+  @Get('data-rooms/:dataRoomId/files/search')
+  search(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('dataRoomId') dataRoomId: string,
+    @Query() query: SearchFilesQueryDto,
+  ) {
+    return this.filesService.search(user, dataRoomId, query);
+  }
+
+  @UseGuards(SupabaseAuthGuard)
   @Get('files/:fileId')
   getById(@CurrentUser() user: AuthenticatedUser, @Param('fileId') fileId: string) {
     return this.filesService.getById(user, fileId);
+  }
+
+  @UseGuards(SupabaseAuthGuard)
+  @Get('files/:fileId/versions')
+  getVersions(@CurrentUser() user: AuthenticatedUser, @Param('fileId') fileId: string) {
+    return this.filesService.getVersions(user, fileId);
+  }
+
+  @UseGuards(SupabaseAuthGuard)
+  @Get('files/:fileId/versions/:versionId/download')
+  getVersionDownloadUrl(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('fileId') fileId: string,
+    @Param('versionId') versionId: string,
+  ) {
+    return this.filesService.getVersionDownloadUrl(user, fileId, versionId);
   }
 
   @UseGuards(SupabaseAuthGuard)

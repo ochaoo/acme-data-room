@@ -90,8 +90,11 @@ export class FoldersService {
     await this.accessControlService.assertOwner(user.id, folder.dataRoomId);
     const descendantIds = await this.foldersRepository.findDescendantIds(folder.id);
     const files = await this.filesRepository.findByFolderIds(descendantIds);
+    const versions = await this.filesRepository.findVersionsForFiles(files.map((file) => file.id));
 
-    await this.storageService.removeFiles(files.map((file) => file.storageKey));
+    await this.storageService.removeFiles([
+      ...new Set([...files.map((file) => file.storageKey), ...versions.map((version) => version.storageKey)]),
+    ]);
     await this.sharingRepository.deleteForResources(descendantIds, files.map((file) => file.id));
     await this.foldersRepository.delete(folder.id);
   }
@@ -144,9 +147,14 @@ export class FoldersService {
       this.filesRepository.listForLocation(dataRoomId, folderId, query.fileCursor, query.limit),
     ]);
 
+    const statsByFolder = await this.foldersRepository.findSubtreeStats(folderPage.items.map((folder) => folder.id));
+
     return {
       breadcrumbs,
-      folders: folderPage.items,
+      folders: folderPage.items.map((folder) => {
+        const stats = statsByFolder.get(folder.id) ?? { fileCount: 0, sizeBytes: 0 };
+        return { ...folder, ...stats };
+      }),
       files: filePage.items.map((file) => ({ ...file, sizeBytes: Number(file.sizeBytes) })),
       nextFolderCursor: folderPage.nextCursor,
       nextFileCursor: filePage.nextCursor,

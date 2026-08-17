@@ -186,7 +186,45 @@ describe('Data Room API (e2e)', () => {
     const secondFile = await uploadPdf(owner, room.id, 'report.pdf');
 
     expect(firstFile.name).toBe('report.pdf');
-    expect(secondFile.name).toBe('report (1).pdf');
+    expect(secondFile.id).toBe(firstFile.id);
+    expect(secondFile.name).toBe('report.pdf');
+
+    const versions = await request(app.getHttpServer())
+      .get(`/files/${firstFile.id}/versions`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200);
+    expect(versions.body).toEqual([
+      expect.objectContaining({ versionNumber: 2 }),
+      expect.objectContaining({ versionNumber: 1 }),
+    ]);
+  });
+
+  it('should return subtree folder size and find matching file names across a data room', async () => {
+    const room = await createDataRoom(owner, 'Search and folder size room');
+    const finance = await createFolder(owner, room.id, 'Finance');
+    const reports = await createFolder(owner, room.id, 'Reports', finance.id);
+    const report = await uploadPdf(owner, room.id, 'board-report.pdf', reports.id);
+    await uploadPdf(owner, room.id, 'nda.pdf');
+
+    const contents = await request(app.getHttpServer())
+      .get(`/data-rooms/${room.id}/contents`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200);
+    expect(contents.body.folders).toEqual([
+      expect.objectContaining({
+        id: finance.id,
+        fileCount: 1,
+        sizeBytes: PDF_CONTENT.length,
+      }),
+    ]);
+
+    const search = await request(app.getHttpServer())
+      .get(`/data-rooms/${room.id}/files/search?query=board`)
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .expect(200);
+    expect(search.body.files).toEqual([
+      expect.objectContaining({ id: report.id, name: 'board-report.pdf', folder: { id: reports.id, name: reports.name } }),
+    ]);
   });
 
   async function createDataRoom(user: TestUser, name: string): Promise<DataRoomResponse> {
@@ -212,11 +250,11 @@ describe('Data Room API (e2e)', () => {
     return response.body;
   }
 
-  async function uploadPdf(user: TestUser, dataRoomId: string, fileName: string) {
+  async function uploadPdf(user: TestUser, dataRoomId: string, fileName: string, folderId?: string) {
     const intent = await request(app.getHttpServer())
       .post('/files/upload-intents')
       .set('Authorization', `Bearer ${user.accessToken}`)
-      .send({ dataRoomId, fileName, mimeType: 'application/pdf', sizeBytes: PDF_CONTENT.length })
+      .send({ dataRoomId, fileName, mimeType: 'application/pdf', sizeBytes: PDF_CONTENT.length, folderId })
       .expect(201);
     const uploadIntent = intent.body as UploadIntentResponse;
     storageKeys.push(uploadIntent.storageKey);
@@ -237,6 +275,7 @@ describe('Data Room API (e2e)', () => {
         mimeType: 'application/pdf',
         sizeBytes: PDF_CONTENT.length,
         storageKey: uploadIntent.storageKey,
+        folderId,
       })
       .expect(201);
     return completed.body as { id: string; name: string };
